@@ -106,7 +106,9 @@ public:
 	FGameplayTag GetCustomSpeakerTag(const class AActor * const InActor) const;
 
 	//
-	virtual void PlayVoiceOver(class AActor *Actor, FGameplayTag VoiceOver) { }
+	UFUNCTION(BlueprintNativeEvent)
+	void PlayVoiceOver(class AActor *Actor, FGameplayTag VoiceOver, EDialogueExpression Expression);
+	virtual void PlayVoiceOver_Implementation(class AActor* Actor, FGameplayTag VoiceOver, EDialogueExpression Expression) { }
 
 	//Add dialogue. If you want this to be accompanied by Choices then do this last
 	UFUNCTION(BlueprintCallable, meta = (BlueprintProtected, Latent, LatentInfo = "LatentInfo", MultiLine = true), DisplayName = "Dialogue")
