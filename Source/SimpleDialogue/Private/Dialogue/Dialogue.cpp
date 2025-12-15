@@ -460,7 +460,7 @@ void UDialogue::DialogueBox(EDialogueSpeaker Speaker, FText Text, FLatentActionI
 	DialogueManager->QueueDialogueUpdate();
 	DialogueManager->MarkShouldUpdateSpeaker();
 
-	PlayVoiceOver(pActor, VoiceOver);
+	PlayVoiceOver(pActor, VoiceOver, Expression);
 }
 
 //=================================================================
@@ -524,7 +524,7 @@ void UDialogue::DialogueBoxNoLatent(EDialogueSpeaker Speaker, FText Text, float 
 	DialogueManager->QueueDialogueUpdate();
 	DialogueManager->MarkShouldUpdateSpeaker();
 
-	PlayVoiceOver(pActor, VoiceOver);
+	PlayVoiceOver(pActor, VoiceOver, Expression);
 }
 
 //=================================================================
@@ -1484,7 +1484,7 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 	if (StrippedText[StrippedText.Len()-1] == L')')
 	{
 		FString NewText = StrippedText;
-		NewText.RemoveAt(NewText.Len() - 1);
+		NewText.RemoveAt(NewText.Len()-1);
 		NewText.Split(TEXT("("), &NewText, &ExpressionName);
 
 		//Remove empty spaces from end
