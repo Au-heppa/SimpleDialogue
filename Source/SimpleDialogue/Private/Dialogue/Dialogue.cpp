@@ -1397,6 +1397,8 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 	OutString += FString::Printf(TEXT("Begin Object Class=/Script/BlueprintGraph.K2Node_CallFunction Name=\"K2Node_CallFunction_%d\"\r\n"), Index);
 	OutString += TEXT("   FunctionReference=(MemberName=\"DialogueBox\",bSelfContext=True)\r\n");
 
+	int32 iNumberOfPins = 6;
+
 	if (GenerateNodesVerticallyAndNotConnected)
 	{
 		OutString += TEXT("   NodePosX=0\r\n");
@@ -1410,15 +1412,19 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 
 	if (Index > 1 && !GenerateNodesVerticallyAndNotConnected)
 	{
-		OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"execute\",PinType.PinCategory=\"exec\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,LinkedTo=(K2Node_CallFunction_%d %s,),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), Index-1, *GetPinId(PinNum-5));
+		OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"execute\",PinType.PinCategory=\"exec\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,LinkedTo=(K2Node_CallFunction_%d %s,),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), Index-1, *GetPinId(PinNum- iNumberOfPins));
 		PinNum++;
 	}
 
 	if (HasNext && !GenerateNodesVerticallyAndNotConnected)
 	{
-		OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"then\",PinFriendlyName=\"Completed\",Direction=\"EGPD_Output\",PinType.PinCategory=\"exec\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,LinkedTo=(K2Node_CallFunction_%d %s,),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), Index+1, *GetPinId(PinNum+5));
+		OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"then\",PinFriendlyName=\"Completed\",Direction=\"EGPD_Output\",PinType.PinCategory=\"exec\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,LinkedTo=(K2Node_CallFunction_%d %s,),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), Index+1, *GetPinId(PinNum+ iNumberOfPins));
 		PinNum++;
 	}
+
+	//--------------------------------------------------------------------------------------
+	// Figure out speaker
+	//--------------------------------------------------------------------------------------
 
 	FString StrippedText;
 	FString SpeakerName;
@@ -1457,11 +1463,49 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 		PreviousSpeaker = SpeakerName;
 	}
 
-	if (StrippedText.Len() > 0 && StrippedText[0] == L'"' && StrippedText[StrippedText.Len()-1] == L'"')
+	if (StrippedText.Len() > 0 && StrippedText[0] == L'"' && StrippedText[StrippedText.Len() - 1] == L'"')
 	{
 		StrippedText.RemoveFromStart(L"\"");
 		StrippedText.RemoveFromEnd(L"\"");
 	}
+
+	//Remove empty spaces from end
+	while (StrippedText[StrippedText.Len()-1] == L' ')
+	{
+		StrippedText.RemoveAt(StrippedText.Len()-1);
+	}
+
+	//--------------------------------------------------------------------------------------
+	// Figure out speaker
+	//--------------------------------------------------------------------------------------
+	FString ExpressionName;
+
+	//If last character is ")" then we might have an expression
+	if (StrippedText[StrippedText.Len()-1] == L')')
+	{
+		FString NewText = StrippedText;
+		NewText.RemoveAt(NewText.Len() - 1);
+		NewText.Split(TEXT("("), &NewText, &ExpressionName);
+
+		//Remove empty spaces from end
+		while (NewText[NewText.Len() - 1] == L' ')
+		{
+			NewText.RemoveAt(NewText.Len() - 1);
+		}
+
+		if (NewText.Len() > 0 && NewText[0] == L'"' && NewText[NewText.Len() - 1] == L'"')
+		{
+			NewText.RemoveFromStart(L"\"");
+			NewText.RemoveFromEnd(L"\"");
+		}
+
+		if (NewText.Len() > 0)
+		{
+			StrippedText = NewText;
+		}
+	}
+
+	UE_LOG(LogTemp, Error, TEXT("Expression Name: %s"), *ExpressionName);
 
 	//Text
 	OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"Text\",PinType.PinCategory=\"text\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultTextValue=\"%s\"),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), *StrippedText);
@@ -1469,6 +1513,10 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 
 	//Duration
 	OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"Duration\",PinType.PinCategory=\"real\",PinType.PinSubCategory=\"float\",PinType.PinSubCategoryObject=None,PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultValue=\"%f\"),bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), InDuration);
+	PinNum++;
+
+	//Expression:
+	OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"Expression\",PinType.PinCategory=\"byte\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject=/Script/CoreUObject.Enum'\"/Script/SimpleDialogue.EDialogueExpression\"',PinType.PinSubCategoryMemberReference=(),PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultValue=\"%s\",bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), *ExpressionName);
 	PinNum++;
 
 	//Speaker:
