@@ -312,7 +312,10 @@ public:
 	static void ClearStringTableUse(const TSoftObjectPtr<class UStringTable>& InStringTable, class UObject* InObject);
 	void CheckUsingStringTable();
 
-#endif
+	UFUNCTION(BlueprintCallable, Category = "Test", meta = (CallableWithoutWorldContext = true, DevelopmentOnly = true))
+	static void UseStringTables(class UObject *InObject, TSoftObjectPtr<class UStringTable> InGeneralStringTable, TSoftObjectPtr<class UStringTable> InObjectSpecificStringTable);
+
+#endif //
 
 private:
 
@@ -323,6 +326,12 @@ private:
 	UPROPERTY(EditAnywhere, Category="String Table")
 	TSoftObjectPtr<class UStringTable> DefaultStringTable;
 #endif //
+
+public:
+
+	//
+	UFUNCTION(BlueprintCallable)
+	void GetEveryoneInvolved(TArray<class AActor*> &OutActors);
 
 	//=============================================================================================================================================================================================================
 	//
