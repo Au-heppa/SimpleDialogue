@@ -218,6 +218,8 @@ void UDialogue::Deactivate()
 	bIsActive = false;
 	OnDeactivate();
 
+	CustomSpeakers.Reset();
+
 	ClearChoices();
 	ClearDialogueBox();
 
@@ -675,6 +677,35 @@ bool UDialogue::AreAllNextTasksVisited() const
 //=================================================================
 // 
 //=================================================================
+void UDialogue::GetEveryoneInvolved(TArray<class AActor*>& OutActors)
+{
+	OutActors.Reset();
+
+	class AActor *pPlayer = PlayerActor.Get();
+	if (IsValid(pPlayer))
+	{
+		OutActors.Add(pPlayer);
+	}
+
+	class AActor *pTarget = DialogueTarget.Get();
+	if (IsValid(pTarget))
+	{
+		OutActors.AddUnique(pTarget);
+	}
+
+	for (auto It = CustomSpeakers.CreateConstIterator(); It; ++It)
+	{
+		class AActor *pCustom = It.Value().Get();
+		if (IsValid(pCustom))
+		{
+			OutActors.AddUnique(pCustom);
+		}
+	}
+}
+
+//=================================================================
+// 
+//=================================================================
 bool UDialogue::SelectOption(int32 Index)
 {
 	if (!DialogueManager.Get())
@@ -843,15 +874,15 @@ FString GetKeyName(const FString &KeyName, FProperty *Property, int32 Index)
 	if (KeyName.Len() > 0)
 	{
 		if (Index > 0)
-			return FString::Printf(TEXT("%s_%s_%d"), *KeyName, *Property->GetName(), Index);
+			return FString::Printf(TEXT("%s_%s_%d"), *KeyName, *Property->GetAuthoredName(), Index);
 
-		return FString::Printf(TEXT("%s_%s"), *KeyName, *Property->GetName());
+		return FString::Printf(TEXT("%s_%s"), *KeyName, *Property->GetAuthoredName());
 	}
 
 	if (Index > 0)
-		return FString::Printf(TEXT("%s_%d"), *Property->GetName(), Index);
+		return FString::Printf(TEXT("%s_%d"), *Property->GetAuthoredName(), Index);
 
-	return Property->GetName();
+	return Property->GetAuthoredName();
 }
 
 //=================================================================
@@ -1276,6 +1307,16 @@ void UDialogue::UseStringTable(const TSoftObjectPtr<class UStringTable> &InStrin
 		}
 
 		UseStringTableInProperties(InObject, TEXT(""), pDefaultStringTable, InObject->GetClass(), InObject, InDontAdd);
+
+		class UDataTable *pDataTable = Cast<UDataTable>(InObject);
+		if (!IsValid(pDataTable))
+			return;
+
+		const TMap<FName, uint8*>&RowMap = pDataTable->GetRowMap();
+		for (auto It = RowMap.CreateConstIterator(); It; ++It)
+		{
+			UseStringTableInProperties(InObject, It.Key().ToString(), pDefaultStringTable, pDataTable->GetRowStruct(), It.Value(), InDontAdd);
+		}
 	}
 }
 
@@ -1307,6 +1348,20 @@ void UDialogue::CheckUsingStringTable()
 {
 	UseStringTable(DefaultStringTable, this, true);
 	UseStringTable(StringTable, this, false);
+}
+
+//=================================================================
+// 
+//=================================================================
+void UDialogue::UseStringTables(class UObject* InObject, TSoftObjectPtr<class UStringTable> InGeneralStringTable, TSoftObjectPtr<class UStringTable> InObjectSpecificStringTable)
+{
+	if (!IsValid(InObject))
+		return;
+
+	UseStringTable(InGeneralStringTable, InObject, true);
+	UseStringTable(InObjectSpecificStringTable, InObject, false);
+
+	InObject->Modify();
 }
 
 #endif //WITH_EDITOR
