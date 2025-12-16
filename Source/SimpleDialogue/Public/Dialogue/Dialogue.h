@@ -315,7 +315,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Test", meta = (CallableWithoutWorldContext = true, DevelopmentOnly = true))
 	static void UseStringTables(class UObject *InObject, TSoftObjectPtr<class UStringTable> InGeneralStringTable, TSoftObjectPtr<class UStringTable> InObjectSpecificStringTable);
 
-#endif //
+#endif
 
 private:
 
@@ -451,11 +451,20 @@ public:
 
 	//
 	void GenerateNode(const FString &InString, float InDuration, int32 Index, bool HasNext, int32 &PinNum, FString &OutString, FString &PreviousSpeaker);
+	bool ParseNodeToString(const FString& NodeString, FString& OutLine);
 
 	//
 #endif //
 
 #if WITH_EDITORONLY_DATA
+
+	//Select nodes, hit Ctrl + C and then toggle this value enabled. ClipboardTexts array should get populated with the values of the selected nodes
+	UPROPERTY(EditAnywhere, Category = "Nodes to Clipboard")
+	bool ParseNodesFromClipboard;
+
+	//Copy from ClipboardText array to clipboard and allow pasting back to text editor program
+	UPROPERTY(EditAnywhere, Category = "Nodes to Clipboard")
+	bool CopyClipboardTextArrayToClipBoard;
 
 	//
 	UPROPERTY(EditAnywhere, Category="Clipboard")
