@@ -1364,7 +1364,7 @@ void UDialogue::UseStringTables(class UObject* InObject, TSoftObjectPtr<class US
 	InObject->Modify();
 }
 
-#endif //WITH_EDITOR
+#endif //
 
 //=================================================================
 // 
@@ -1579,10 +1579,164 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 	PinNum++;
 
 	//Custom:
-	OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"Speaker\",PinName=\"InCustomName\",PinType.PinCategory=\"struct\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject =/Script/CoreUObject.ScriptStruct'\"/Script/GameplayTags.GameplayTag\"',PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultValue=\"%s\",bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), *CustomName);
+	OutString += FString::Printf(TEXT("   CustomProperties Pin (PinId=%s,PinName=\"InCustomName\",PinType.PinCategory=\"struct\",PinType.PinSubCategory=\"\",PinType.PinSubCategoryObject =/Script/CoreUObject.ScriptStruct'\"/Script/GameplayTags.GameplayTag\"',PinType.PinValueType=(),PinType.ContainerType=None,PinType.bIsReference=False,PinType.bIsConst=False,PinType.bIsWeakPointer=False,PinType.bIsUObjectWrapper=False,PinType.bSerializeAsSinglePrecisionFloat=False,DefaultValue=\"%s\",bHidden=False,bNotConnectable=False,bDefaultValueIsReadOnly=False,bDefaultValueIsIgnored=False,bAdvancedView=False,bOrphanedPin=False,)\r\n"), *GetPinId(PinNum), *CustomName);
 	PinNum++;
 
 	OutString += TEXT("End Object\r\n");
+}
+
+//===================================================================================================
+// 
+//===================================================================================================
+bool FindPinPropertyValue(const FString &String, const FString &PinName, FString &Value, bool IsGameplayTag = false)
+{
+	int32 iIndex = String.Find(PinName, ESearchCase::CaseSensitive);
+	if (iIndex == INDEX_NONE)
+		return false;
+
+	iIndex = iIndex + PinName.Len() + 1;
+
+	FString MidText = String.Mid(iIndex);
+	
+	if (MidText.StartsWith(TEXT("LOCTABLE")) || MidText.StartsWith(TEXT("NSLOCTEXT")))
+	{
+		//UE_LOG(LogTemp, Error, TEXT("Localization table!"));
+
+		iIndex = 0;
+		while (iIndex < MidText.Len())
+		{
+			Value.AppendChar(MidText[iIndex]);
+
+			if (MidText[iIndex] == ')')
+			{
+				return Value.Len() > 0;
+			}
+
+			iIndex++;
+		}
+
+		return Value.Len() > 0;
+	}
+
+	int32 iCount = 0;
+	int32 iStart = IsGameplayTag ? 3 : 1;
+	int32 iEnd = iStart+1; // IsGameplayTag ? 4 : 2;
+	while (iIndex < String.Len())
+	{
+		if (String[iIndex] == L'\"' || (IsGameplayTag && String[iIndex] == L'\\'))
+		{
+			iCount++;
+
+			if (iCount < iEnd)
+			{
+				iIndex++;
+				continue;
+			}
+
+			return Value.Len() > 0;
+		}
+		else if (iCount < iStart)
+		{
+			iIndex++;
+			continue;
+		}
+
+		Value.AppendChar(String[iIndex]);
+		iIndex++;
+	}
+
+	return false;
+}
+
+//===================================================================================================
+// 
+//===================================================================================================
+bool UDialogue::ParseNodeToString(const FString& NodeString, FString& OutLine)
+{
+	static const FString String_Text = TEXT("Text");
+	static const FString String_Speaker = TEXT("Speaker");
+	static const FString String_CustomName = TEXT("InCustomName");
+	static const FString String_Expression = TEXT("Expression");
+
+	TArray<FString> Array;
+	NodeString.ParseIntoArray(Array, TEXT("\n"), true);
+
+	FString Text;
+	FString Expression;
+	FString Speaker;
+	FString CustomSpeaker;
+
+	for (int32 i=0; i<Array.Num(); i++)
+	{
+		const FString &String = Array.GetData()[i];
+
+		FString PinName;
+		FindPinPropertyValue(String, TEXT("PinName"), PinName);
+
+		bool bIsGameplayTag = PinName.Equals(String_CustomName, ESearchCase::CaseSensitive);
+
+		FString Value;
+		if (!FindPinPropertyValue(String, TEXT("DefaultValue"), Value, bIsGameplayTag))
+		{
+			FindPinPropertyValue(String, TEXT("DefaultTextValue"), Value, bIsGameplayTag);
+		}
+
+		//UE_LOG(LogTemp, Error, TEXT("PinName %s value %s"), *PinName, *Value);
+
+		if (PinName.Equals(String_Text, ESearchCase::CaseSensitive))
+		{
+			Text = Value;
+		}
+		else if (PinName.Equals(String_Speaker, ESearchCase::CaseSensitive))
+		{
+			Speaker = Value;
+		}
+		else if (PinName.Equals(String_CustomName, ESearchCase::CaseSensitive))
+		{
+			CustomSpeaker = Value;
+		}
+		else if (PinName.Equals(String_Expression, ESearchCase::CaseSensitive))
+		{
+			Expression = Value;
+		}
+	}
+
+	if (Text.Len() == 0)
+		return false;
+
+	int32 PortFlags = 0;
+
+	FText ImportedText;
+	const FTextProperty* TextPropCDO = GetDefault<FTextProperty>();
+	//TextPropCDO->ExportTextItem_Direct(Text, &ImportedText, nullptr, nullptr, PortFlags, nullptr);
+	TextPropCDO->ImportText_Direct(*Text, &ImportedText, nullptr, PortFlags);
+
+	UE_LOG(LogTemp, Error, TEXT("Text is \"%s\" and \"%s\" with type: %s"), *Text, *ImportedText.ToString(), ImportedText.IsFromStringTable() ? TEXT("From string table") : (ImportedText.IsCultureInvariant() ? TEXT("Culture invariant") : TEXT("OTHER")));
+	UE_LOG(LogTemp, Error, TEXT("Expression is \"%s\""), *Expression);
+	UE_LOG(LogTemp, Error, TEXT("Speaker is \"%s\""), *Speaker);
+	UE_LOG(LogTemp, Error, TEXT("Custom Name is \"%s\""), *CustomSpeaker);
+
+	if (Speaker == TEXT("Custom"))
+	{
+		FString SimpleName;
+		if (CustomSpeaker.Split(TEXT("."), NULL, &SimpleName, ESearchCase::CaseSensitive, ESearchDir::FromEnd))
+		{
+			Speaker = SimpleName;
+		}
+		else
+		{
+			Speaker = CustomSpeaker;
+		}
+	}
+
+	OutLine = FString::Printf(TEXT("%s: %s"), *Speaker, *ImportedText.ToString());
+
+	if (Expression.Len() > 0 && !Expression.Equals(TEXT("None"), ESearchCase::IgnoreCase))
+	{
+		OutLine += TEXT(" (") + Expression + TEXT(")");
+	}
+
+	return true;
 }
 
 //===================================================================================================9
@@ -1720,7 +1874,6 @@ void GatherAllFloatPins(class UObject *InObject, TArray<UEdGraphPin*> &OutPins, 
 	}
 }
 
-
 //===================================================================================================
 // 
 //===================================================================================================
@@ -1745,6 +1898,45 @@ void UDialogue::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEve
 		}
 
 		GenerateTextsFromClipboard = false;
+	}
+
+	if (ParseNodesFromClipboard)
+	{
+		FString Dest;
+		FPlatformApplicationMisc::ClipboardPaste(Dest);
+
+		TArray<FString> Lines;
+
+		TArray<FString> NodeStrings;
+		Dest.ParseIntoArray(NodeStrings, TEXT("Begin Object"), true);
+		for (int32 i=0; i< NodeStrings.Num(); i++)
+		{
+			FString LineString;
+			if (ParseNodeToString(NodeStrings.GetData()[i], LineString))
+			{
+				Lines.Add(LineString);
+			}
+		}
+
+		if (Lines.Num() > 0)
+		{
+			ClipboardTexts = Lines;
+		}
+
+		ParseNodesFromClipboard = false;
+	}
+
+	if (CopyClipboardTextArrayToClipBoard)
+	{
+		FString Dest;
+		for (int32 i=0; i<ClipboardTexts.Num(); i++)
+		{
+			Dest += ClipboardTexts.GetData()[i] + TEXT("\r\n");
+		}
+
+		FPlatformApplicationMisc::ClipboardCopy(*Dest);
+
+		CopyClipboardTextArrayToClipBoard = false;
 	}
 
 	if ( GenerateNodesFromTextsAndCopyToClipboard )
