@@ -850,6 +850,44 @@ bool FixTextToUseStringTable(class UStringTable *StringTable, FString Key, FText
 //=================================================================
 // 
 //=================================================================
+bool UDialogue::FixTextToUseStringTable(FText& InText, const FString &InKey, class UStringTable* InStringTable, bool InDontAdd)
+{
+	return ::FixTextToUseStringTable(InStringTable, InKey, InText, InDontAdd);
+}
+
+//=================================================================
+// 
+//=================================================================
+bool UDialogue::ChangeTextInStringTable(class UStringTable* InStringTable, const FText& InOldText, FText& InNewText)
+{
+	if (InNewText.IsEmpty())
+		return false;
+
+	if (!InOldText.IsFromStringTable())
+		return false;
+
+	if (!IsValid(InStringTable))
+		return false;
+
+	FStringTable& MutableStringTable = InStringTable->GetMutableStringTable().Get();
+
+	FName TableId;
+	FString Key;
+	FTextInspector::GetTableIdAndKey(InOldText, TableId, Key);
+	if (InStringTable->GetStringTableId() != TableId)
+		return false;
+
+
+	MutableStringTable.SetSourceString(Key, InNewText.ToString());
+	InStringTable->Modify();
+
+	InNewText = FText::FromStringTable(InStringTable->GetStringTableId(), Key);
+	return true;
+}
+
+//=================================================================
+// 
+//=================================================================
 void UseStringTableInProperty(class UObject *Dialogue, const FString &KeyName, FTextProperty *InProperty, void *ValuePtr, bool InGetValuePtr, class UStringTable *StringTable, bool DontAdd)
 {
 	FText InText = InGetValuePtr ? InProperty->GetPropertyValue(ValuePtr) : InProperty->GetPropertyValue_InContainer(ValuePtr, 0);
@@ -977,7 +1015,6 @@ void UseStringTableInProperties(class UObject *Dialogue, FString KeyName, class 
 		}
 	}
 }
-
 
 //=================================================================
 // 
@@ -1443,6 +1480,87 @@ FString GetPinId(int32 PinNum)
 //===================================================================================================
 // 
 //===================================================================================================
+void UDialogue::ParseLine(const FString &InString, FString &OutStrippedText, FString &OutSpeakerName, FString &OutCustomName, FString &OutExpressionName, FString &InPreviousSpeaker)
+{
+	if (!InString.Split(TEXT(": "), &OutSpeakerName, &OutStrippedText))
+	{
+		OutStrippedText = InString;
+	}
+
+	if (OutSpeakerName.Len() == 0 && InPreviousSpeaker.Len() > 0)
+	{
+		OutSpeakerName = InPreviousSpeaker;
+	}
+
+	if (OutSpeakerName.Len() > 0 && OutSpeakerName != TEXT("Player") && OutSpeakerName != TEXT("Narrator") && OutSpeakerName != "Target")
+	{
+		OutCustomName = OutSpeakerName;
+		OutSpeakerName = TEXT("Custom");
+	}
+
+	if (OutSpeakerName.Len() == 0)
+	{
+		OutSpeakerName = TEXT("Target");
+	}
+
+	if (OutCustomName.Len() > 0)
+	{
+		InPreviousSpeaker = OutCustomName;
+
+		//OutCustomName = FString::Printf(TEXT("(TagName=\\\"Character.Name.%s\\\")"), *CustomName); //(TagName=\"Character.Abigail\")
+
+		UE_LOG(LogTemp, Error, TEXT("Custom name value: %s"), *OutCustomName);
+	}
+	else
+	{
+		InPreviousSpeaker = OutSpeakerName;
+	}
+
+	if (OutStrippedText.Len() > 0 && OutStrippedText[0] == L'"' && OutStrippedText[OutStrippedText.Len() - 1] == L'"')
+	{
+		OutStrippedText.RemoveFromStart(L"\"");
+		OutStrippedText.RemoveFromEnd(L"\"");
+	}
+
+	//Remove empty spaces from end
+	while (OutStrippedText.Len() > 0 && OutStrippedText[OutStrippedText.Len() - 1] == L' ')
+	{
+		OutStrippedText.RemoveAt(OutStrippedText.Len() - 1);
+	}
+
+	//--------------------------------------------------------------------------------------
+	// Figure out speaker
+	//--------------------------------------------------------------------------------------
+
+	//If last character is ")" then we might have an expression
+	if (OutStrippedText.Len() > 0 && OutStrippedText[OutStrippedText.Len() - 1] == L')')
+	{
+		FString NewText = OutStrippedText;
+		NewText.RemoveAt(NewText.Len() - 1);
+		NewText.Split(TEXT("("), &NewText, &OutExpressionName);
+
+		//Remove empty spaces from end
+		while (NewText.Len() > 0 && NewText[NewText.Len() - 1] == L' ')
+		{
+			NewText.RemoveAt(NewText.Len() - 1);
+		}
+
+		if (NewText.Len() > 0 && NewText[0] == L'"' && NewText[NewText.Len() - 1] == L'"')
+		{
+			NewText.RemoveFromStart(L"\"");
+			NewText.RemoveFromEnd(L"\"");
+		}
+
+		if (NewText.Len() > 0)
+		{
+			OutStrippedText = NewText;
+		}
+	}
+}
+
+//===================================================================================================
+// 
+//===================================================================================================
 void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 Index, bool HasNext, int32 &PinNum, FString &OutString, FString &PreviousSpeaker)
 {
 	//
@@ -1482,83 +1600,11 @@ void UDialogue::GenerateNode(const FString &InString, float InDuration, int32 In
 	//--------------------------------------------------------------------------------------
 
 	FString StrippedText;
+	FString ExpressionName;
 	FString SpeakerName;
 	FString CustomName;
-	if (!InString.Split(TEXT(": "), &SpeakerName, &StrippedText))
-	{
-		StrippedText = InString;
-	}
-
-	if (SpeakerName.Len() == 0 && PreviousSpeaker.Len() > 0)
-	{
-		SpeakerName = PreviousSpeaker;
-	}
-
-	if (SpeakerName.Len() > 0 && SpeakerName != TEXT("Player") && SpeakerName != TEXT("Narrator") && SpeakerName != "Target")
-	{
-		CustomName = SpeakerName;
-		SpeakerName = TEXT("Custom");
-	}
-
-	if (SpeakerName.Len() == 0)
-	{
-		SpeakerName = TEXT("Target");
-	}
-
-	if (CustomName.Len() > 0)
-	{
-		PreviousSpeaker = CustomName;
-
-		CustomName = FString::Printf(TEXT("(TagName=\\\"Character.Name.%s\\\")"), *CustomName); //(TagName=\"Character.Abigail\")
-
-		UE_LOG(LogTemp, Error, TEXT("Custom name value: %s"), *CustomName);
-	}
-	else
-	{
-		PreviousSpeaker = SpeakerName;
-	}
-
-	if (StrippedText.Len() > 0 && StrippedText[0] == L'"' && StrippedText[StrippedText.Len() - 1] == L'"')
-	{
-		StrippedText.RemoveFromStart(L"\"");
-		StrippedText.RemoveFromEnd(L"\"");
-	}
-
-	//Remove empty spaces from end
-	while (StrippedText[StrippedText.Len()-1] == L' ')
-	{
-		StrippedText.RemoveAt(StrippedText.Len()-1);
-	}
-
-	//--------------------------------------------------------------------------------------
-	// Figure out speaker
-	//--------------------------------------------------------------------------------------
-	FString ExpressionName;
-
-	//If last character is ")" then we might have an expression
-	if (StrippedText[StrippedText.Len()-1] == L')')
-	{
-		FString NewText = StrippedText;
-		NewText.RemoveAt(NewText.Len()-1);
-		NewText.Split(TEXT("("), &NewText, &ExpressionName);
-
-		//Remove empty spaces from end
-		while (NewText[NewText.Len() - 1] == L' ')
-		{
-			NewText.RemoveAt(NewText.Len() - 1);
-		}
-
-		if (NewText.Len() > 0 && NewText[0] == L'"' && NewText[NewText.Len() - 1] == L'"')
-		{
-			NewText.RemoveFromStart(L"\"");
-			NewText.RemoveFromEnd(L"\"");
-		}
-
-		if (NewText.Len() > 0)
-		{
-			StrippedText = NewText;
-		}
-	}
+	ParseLine(InString, StrippedText, SpeakerName, CustomName, ExpressionName, PreviousSpeaker);
+	CustomName = FString::Printf(TEXT("(TagName=\\\"Character.Name.%s\\\")"), *CustomName); //(TagName=\"Character.Abigail\")
 
 	UE_LOG(LogTemp, Error, TEXT("Expression Name: %s"), *ExpressionName);
 
@@ -1711,10 +1757,12 @@ bool UDialogue::ParseNodeToString(const FString& NodeString, FString& OutLine)
 	//TextPropCDO->ExportTextItem_Direct(Text, &ImportedText, nullptr, nullptr, PortFlags, nullptr);
 	TextPropCDO->ImportText_Direct(*Text, &ImportedText, nullptr, PortFlags);
 
+	/*
 	UE_LOG(LogTemp, Error, TEXT("Text is \"%s\" and \"%s\" with type: %s"), *Text, *ImportedText.ToString(), ImportedText.IsFromStringTable() ? TEXT("From string table") : (ImportedText.IsCultureInvariant() ? TEXT("Culture invariant") : TEXT("OTHER")));
 	UE_LOG(LogTemp, Error, TEXT("Expression is \"%s\""), *Expression);
 	UE_LOG(LogTemp, Error, TEXT("Speaker is \"%s\""), *Speaker);
 	UE_LOG(LogTemp, Error, TEXT("Custom Name is \"%s\""), *CustomSpeaker);
+	*/
 
 	if (Speaker == TEXT("Custom"))
 	{
@@ -1801,6 +1849,113 @@ void GatherAllTextPins(class UObject *InObject, TArray<UEdGraphPin*> &OutPins)
 		GatherTextPinsFromGraph( pBlueprint->FunctionGraphs, OutPins);
 		GatherTextPinsFromGraph( pBlueprint->MacroGraphs, OutPins);
 	}
+}
+
+//===================================================================================================
+// 
+//===================================================================================================
+bool UDialogue::GatherAllTexts(TSubclassOf<class UDialogue> DialogueScript, TArray<FText>& Texts)
+{
+	Texts.Reset();
+
+	TArray<UEdGraphPin*> Pins;
+
+	//If object, then check if blueprint object
+	class UBlueprint* pBlueprint = Cast<UBlueprint>(DialogueScript->ClassGeneratedBy);
+	if (pBlueprint)
+	{
+		GatherTextPinsFromGraph(pBlueprint->UbergraphPages, Pins);
+		GatherTextPinsFromGraph(pBlueprint->FunctionGraphs, Pins);
+		GatherTextPinsFromGraph(pBlueprint->MacroGraphs, Pins);
+	}
+
+	for (int32 i=0; i<Pins.Num(); i++)
+	{
+		Texts.Add(Pins.GetData()[i]->DefaultTextValue);
+	}
+
+	return Texts.Num() > 0;
+}
+
+//===================================================================================================9
+// 
+//===================================================================================================
+class UEdGraphPin *FindTextPinInGraph(const TArray<class UEdGraph*>& Graphs, const FString &Text)
+{
+	//Go through different graphs
+	for (int32 i = 0; i < Graphs.Num(); i++)
+	{
+		//
+		class UEdGraph* pGraph = Graphs.GetData()[i];
+		if (!pGraph)
+			continue;
+
+		//Go through graph nodes
+		for (int32 j = 0; j < pGraph->Nodes.Num(); j++)
+		{
+			//
+			class UEdGraphNode* pNode = pGraph->Nodes.GetData()[j];
+			if (!pNode)
+				continue;
+
+			//Go through pins in node
+			for (int32 k = 0; k < pNode->Pins.Num(); k++)
+			{
+				//
+				class UEdGraphPin* pPin = pNode->Pins.GetData()[k];
+				if (!pPin)
+					continue;
+
+				//
+				if (pPin->LinkedTo.Num() > 0)
+					continue;
+
+				if (pPin->Direction != EEdGraphPinDirection::EGPD_Input)
+					continue;
+
+				//Make sure correct type
+				static const FName Name_Text = TEXT("text");
+				if (pPin->PinType.PinCategory != Name_Text)
+				{
+					continue;
+				}
+
+				if (pPin->DefaultTextValue.ToString().Equals(Text))
+					return pPin;
+			}
+		}
+	}
+
+	return NULL;
+}
+
+//===================================================================================================
+// 
+//===================================================================================================
+class UEdGraphPin *UDialogue::FindPinWithText(TSubclassOf<class UDialogue> DialogueScript, const FText &Text)
+{
+	//If object, then check if blueprint object
+	class UBlueprint* pBlueprint = Cast<UBlueprint>(DialogueScript->ClassGeneratedBy);
+	if (pBlueprint)
+	{
+		FString String = Text.ToString();
+
+		class UEdGraphPin *pPin;
+
+		pPin = FindTextPinInGraph(pBlueprint->UbergraphPages, String);
+		if (pPin)
+			return pPin;
+
+		pPin = FindTextPinInGraph(pBlueprint->FunctionGraphs, String);
+		if (pPin)
+			return pPin;
+
+		pPin = FindTextPinInGraph(pBlueprint->MacroGraphs, String);
+		if (pPin)
+			return pPin;
+	}
+
+	return NULL;
 }
 
 //===================================================================================================

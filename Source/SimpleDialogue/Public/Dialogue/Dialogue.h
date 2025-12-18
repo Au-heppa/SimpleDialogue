@@ -315,6 +315,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Test", meta = (CallableWithoutWorldContext = true, DevelopmentOnly = true))
 	static void UseStringTables(class UObject *InObject, TSoftObjectPtr<class UStringTable> InGeneralStringTable, TSoftObjectPtr<class UStringTable> InObjectSpecificStringTable);
 
+	//
+	static bool FixTextToUseStringTable(FText &InText, const FString& InKey, class UStringTable *InStringTable, bool InDontAdd);
+	static bool ChangeTextInStringTable(class UStringTable *InStringTable, const FText &InOldText, FText &InNewText);
+	static void ParseLine(const FString& InLine, FString& OutStrippedLine, FString& OutSpeaker, FString &OutCustomSpeaker, FString& OutExpression, FString& InPreviousSpeaker);
+
+	//
+	static bool GatherAllTexts(TSubclassOf<class UDialogue> DialogueScript, TArray<FText> &Texts);
+
+	static class UEdGraphPin* FindPinWithText(TSubclassOf<class UDialogue> DialogueScript, const FText& Text);
+	
+	//
+	FORCEINLINE const TSoftObjectPtr<class UStringTable> &GetStringTable() const { return StringTable; }
+	FORCEINLINE const TSoftObjectPtr<class UStringTable> &GetDefaultStringTable() const { return DefaultStringTable; }
+
 #endif
 
 private:
